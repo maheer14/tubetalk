@@ -1,8 +1,6 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Play, 
   Send, 
@@ -14,11 +12,11 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  MessageSquare,
+  Video,
+  Search
 } from 'lucide-react';
-
-// Dynamically import react-player (no SSR)
-const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
 
 // Types
 type MessageType = 'user' | 'assistant';
@@ -31,28 +29,25 @@ interface Message {
   timestamp: Date;
 }
 
-interface VideoData {
-  title: string;
-  duration: string;
-  thumbnail: string;
-  chunks: number;
-}
-
 export default function Home() {
   // State
   const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [videoUrl, setVideoUrl] = useState('');
   const [videoStatus, setVideoStatus] = useState<VideoStatus>('idle');
-  const [videoData, setVideoData] = useState<VideoData | null>(null);
+  const [videoId, setVideoId] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', type: 'assistant', content: 'Hi! Paste a YouTube URL and I\'ll help you understand the video content. What would you like to know?', timestamp: new Date() }
+    { 
+      id: '1', 
+      type: 'assistant', 
+      content: 'Hello! 👋 Paste a YouTube URL above and I\'ll help you understand the video content. Ask me anything about the video!', 
+      timestamp: new Date() 
+    }
   ]);
   const [inputMessage, setInputMessage] = useState('');
-  const [playerReady, setPlayerReady] = useState(false);
+  const [isChatReady, setIsChatReady] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Effects
   useEffect(() => {
@@ -62,6 +57,13 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Extract YouTube ID from URL
+  const extractYouTubeId = (url: string) => {
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[7].length === 11) ? match[7] : null;
+  };
 
   // Functions
   const checkBackend = async () => {
@@ -84,6 +86,7 @@ export default function Home() {
     if (!videoUrl.trim()) return;
 
     setVideoStatus('processing');
+    const extractedId = extractYouTubeId(videoUrl);
     
     try {
       const response = await fetch('http://localhost:8000/api/process-video', {
@@ -95,21 +98,15 @@ export default function Home() {
       const data = await response.json();
       
       if (data.success) {
-        // Mock video data (in real app, this would come from backend)
-        setVideoData({
-          title: 'Sample Video Title',
-          duration: '15:30',
-          thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-          chunks: data.chunk_count
-        });
-        
+        setVideoId(extractedId || '');
         setVideoStatus('ready');
+        setIsChatReady(true);
         
         // Add success message
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           type: 'assistant',
-          content: `✅ Video processed successfully! I've analyzed ${data.chunk_count} transcript segments. You can now ask questions about the video.`,
+          content: `✅ **Video processed successfully!**\n\nI've analyzed ${data.chunk_count} transcript segments. You can now ask me questions about:\n• Key points\n• Specific timestamps\n• Main arguments\n• Or anything else!`,
           timestamp: new Date()
         }]);
         
@@ -124,7 +121,7 @@ export default function Home() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !videoData) return;
+    if (!inputMessage.trim() || !isChatReady) return;
 
     // Add user message
     const userMessage: Message = {
@@ -137,13 +134,13 @@ export default function Home() {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
 
-    // Simulate AI response (in real app, call your backend)
+    // Simulate AI thinking
     setTimeout(() => {
       const responses = [
-        `Based on the video, the speaker discusses this topic around the 4:20 mark. They mention that "${inputMessage}" is important because...`,
-        `The video covers this in detail! At 8:15, the presenter explains that ${inputMessage.toLowerCase()} is a key concept that...`,
-        `Great question! Around 12:30 in the video, they provide examples of ${inputMessage.toLowerCase()} including...`,
-        `I found relevant information about this! At 6:45, the speaker talks about how ${inputMessage.toLowerCase()} relates to...`
+        `**Great question!** Based on the video transcript, this topic is covered around **4:20**. The speaker mentions: "${inputMessage}" is important because it demonstrates the core principle discussed earlier.`,
+        `**Interesting!** At **8:15** in the video, the presenter explains that **${inputMessage.toLowerCase()}** is a key concept. They provide several examples including real-world applications.`,
+        `**Let me check...** Yes! Around **12:30**, there's detailed discussion about **${inputMessage.toLowerCase()}**. The main points are:\n• Point 1 related to your question\n• Supporting evidence at 13:45\n• Conclusion at 15:20`,
+        `**Good observation!** The video addresses this at **6:45**. The speaker talks about how **${inputMessage.toLowerCase()}** relates to the broader theme, with specific examples mentioned at 7:30.`
       ];
       
       const randomResponse = responses[Math.floor(Math.random() * responses.length)];
@@ -159,9 +156,9 @@ export default function Home() {
 
   const StatusIndicator = () => {
     const config = {
-      checking: { color: 'text-yellow-500', bg: 'bg-yellow-500/10', icon: Loader2, text: 'Checking...' },
-      connected: { color: 'text-green-500', bg: 'bg-green-500/10', icon: CheckCircle, text: 'Connected' },
-      disconnected: { color: 'text-red-500', bg: 'bg-red-500/10', icon: AlertCircle, text: 'Disconnected' }
+      checking: { color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Loader2, text: 'Checking...' },
+      connected: { color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: CheckCircle, text: 'Connected' },
+      disconnected: { color: 'text-rose-500', bg: 'bg-rose-500/10', icon: AlertCircle, text: 'Disconnected' }
     };
     
     const { color, bg, icon: Icon, text } = config[backendStatus];
@@ -175,89 +172,80 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-grid-white/[0.02] bg-grid" />
-      <div className="absolute inset-0 bg-gradient-to-t from-gray-900/50 via-transparent to-black/50" />
-      
-      <div className="relative container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-slate-100">
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
         {/* Header */}
-        <motion.header 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div className="flex items-center justify-between">
+        <header className="mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl blur opacity-75" />
-                <div className="relative bg-gray-900 p-2 rounded-xl">
-                  <Youtube className="w-8 h-8" />
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl blur-lg opacity-50" />
+                <div className="relative bg-slate-800 p-2.5 rounded-xl border border-slate-700">
+                  <Youtube className="w-7 h-7 text-white" />
                 </div>
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-300 bg-clip-text text-transparent">
                   TubeTalk
                 </h1>
-                <p className="text-gray-400 text-sm">Chat with YouTube videos using AI</p>
+                <p className="text-slate-400 text-sm font-medium">Chat with YouTube videos using AI</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <StatusIndicator />
               <button
                 onClick={checkBackend}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition flex items-center gap-2 text-sm"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition flex items-center gap-2 text-sm font-medium border border-slate-700"
               >
                 <Loader2 className="w-4 h-4" />
                 Refresh
               </button>
             </div>
           </div>
-        </motion.header>
+        </header>
 
-        <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
-          {/* Left Column - Video Input & Player */}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Left Column - Video Input & Preview */}
           <div className="lg:col-span-2 space-y-6">
             {/* Video Input Card */}
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500/10 rounded-lg">
-                  <Play className="w-5 h-5 text-blue-400" />
+            <div className="bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6 shadow-xl">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl">
+                  <Video className="w-6 h-6 text-blue-400" />
                 </div>
-                <h2 className="text-xl font-semibold">YouTube Video</h2>
+                <h2 className="text-xl font-bold text-white">YouTube Video Processor</h2>
               </div>
               
               <form onSubmit={handleProcessVideo} className="space-y-4">
                 <div>
-                  <label className="block text-gray-400 mb-2 text-sm">Video URL</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={videoUrl}
-                      onChange={(e) => setVideoUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none transition"
-                      disabled={videoStatus === 'processing'}
-                    />
+                  <label className="block text-slate-300 mb-2 text-sm font-medium">YouTube Video URL</label>
+                  <div className="flex gap-3">
+                    <div className="flex-1 relative">
+                      <Youtube className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500" />
+                      <input
+                        type="text"
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition placeholder:text-slate-500 text-white"
+                        disabled={videoStatus === 'processing'}
+                      />
+                    </div>
                     <button
                       type="submit"
                       disabled={!videoUrl.trim() || videoStatus === 'processing'}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+                      className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2.5 shadow-lg hover:shadow-blue-500/25"
                     >
                       {videoStatus === 'processing' ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-5 h-5 animate-spin" />
                           Processing...
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-4 h-4" />
-                          Analyze
+                          <Sparkles className="w-5 h-5" />
+                          Analyze Video
                         </>
                       )}
                     </button>
@@ -265,171 +253,181 @@ export default function Home() {
                 </div>
               </form>
 
-              {/* Video Player Area */}
-              <AnimatePresence>
-                {videoData && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-6 overflow-hidden"
-                  >
-                    <div className="bg-black rounded-xl overflow-hidden aspect-video">
-                      {playerReady ? (
-                        <ReactPlayer
-                          url={videoUrl}
-                          width="100%"
-                          height="100%"
-                          controls
-                          playing={false}
-                          onReady={() => setPlayerReady(true)}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                          <div className="text-center">
-                            <Youtube className="w-16 h-16 text-gray-700 mx-auto mb-4" />
-                            <p className="text-gray-500">Video player loading...</p>
-                          </div>
-                        </div>
-                      )}
+              {/* Video Preview */}
+              {videoId && (
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Play className="w-5 h-5" />
+                    <h3 className="font-semibold">Video Preview</h3>
+                  </div>
+                  
+                  <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+                    <div className="aspect-video relative">
+                      {/* YouTube iframe embed */}
+                      <iframe
+                        src={`https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0`}
+                        className="absolute inset-0 w-full h-full"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title="YouTube video player"
+                      />
                     </div>
                     
-                    {videoData && (
-                      <div className="mt-4 grid grid-cols-3 gap-4">
-                        <div className="bg-gray-800/50 p-4 rounded-lg">
-                          <div className="text-gray-400 text-sm mb-1">Title</div>
-                          <div className="font-medium truncate">{videoData.title}</div>
-                        </div>
-                        <div className="bg-gray-800/50 p-4 rounded-lg">
-                          <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Duration
+                    <div className="p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-white" />
                           </div>
-                          <div className="font-medium">{videoData.duration}</div>
+                          <div>
+                            <h4 className="font-bold text-white">Video Ready for Chat</h4>
+                            <p className="text-slate-400 text-sm">Ask questions in the chat</p>
+                          </div>
                         </div>
-                        <div className="bg-gray-800/50 p-4 rounded-lg">
-                          <div className="text-gray-400 text-sm mb-1">Segments</div>
-                          <div className="font-medium">{videoData.chunks} chunks</div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-lg">
+                          <Clock className="w-4 h-4 text-slate-400" />
+                          <span className="text-sm font-medium text-slate-300">15:30</span>
                         </div>
                       </div>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-slate-800/50 p-3 rounded-lg">
+                          <div className="text-slate-400 text-xs font-medium mb-1">STATUS</div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                            <span className="text-sm font-semibold text-emerald-400">Ready for Questions</span>
+                          </div>
+                        </div>
+                        <div className="bg-slate-800/50 p-3 rounded-lg">
+                          <div className="text-slate-400 text-xs font-medium mb-1">SEGMENTS</div>
+                          <div className="text-sm font-semibold text-white">42 analyzed</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {/* Features Grid */}
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              className="grid md:grid-cols-3 gap-4"
-            >
+            {/* How It Works */}
+            <div className="grid md:grid-cols-3 gap-4">
               {[
-                { icon: Sparkles, title: 'AI Analysis', desc: 'Deep understanding of video content' },
-                { icon: Clock, title: 'Time Stamps', desc: 'Jump to relevant moments' },
-                { icon: ExternalLink, title: 'Quick Links', desc: 'Reference specific sections' }
+                { icon: Video, title: 'Paste URL', desc: 'Any YouTube video with captions', color: 'from-blue-500/20 to-blue-600/20' },
+                { icon: Sparkles, title: 'AI Analysis', desc: 'Deep transcript understanding', color: 'from-purple-500/20 to-purple-600/20' },
+                { icon: MessageSquare, title: 'Start Chatting', desc: 'Ask questions, get answers', color: 'from-emerald-500/20 to-emerald-600/20' }
               ].map((item, index) => (
-                <div key={index} className="bg-gray-900/30 backdrop-blur-sm p-4 rounded-xl border border-gray-800">
-                  <item.icon className="w-8 h-8 text-blue-400 mb-3" />
-                  <h3 className="font-semibold mb-1">{item.title}</h3>
-                  <p className="text-gray-400 text-sm">{item.desc}</p>
+                <div key={index} className={`bg-gradient-to-br ${item.color} border border-slate-700/50 p-5 rounded-xl backdrop-blur-sm`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2.5 bg-white/5 rounded-lg">
+                      <item.icon className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="font-bold text-white">{item.title}</h3>
+                  </div>
+                  <p className="text-slate-300 text-sm leading-relaxed">{item.desc}</p>
                 </div>
               ))}
-            </motion.div>
+            </div>
           </div>
 
           {/* Right Column - Chat Interface */}
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex flex-col h-full"
-          >
-            <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 flex-1 flex flex-col">
+          <div className="flex flex-col h-full">
+            <div className="bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex-1 flex flex-col shadow-xl">
               {/* Chat Header */}
-              <div className="p-6 border-b border-gray-800">
+              <div className="p-6 border-b border-slate-700/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-500/10 rounded-lg">
-                    <Bot className="w-5 h-5 text-purple-400" />
+                  <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl">
+                    <Bot className="w-6 h-6 text-purple-300" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold">Video Assistant</h2>
-                    <p className="text-gray-400 text-sm">Ask questions about the video</p>
+                    <h2 className="text-xl font-bold text-white">Video Assistant</h2>
+                    <p className="text-slate-400 text-sm font-medium">Ask anything about the video</p>
                   </div>
                 </div>
               </div>
 
               {/* Messages Container */}
-              <div 
-                ref={chatContainerRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4"
-              >
-                <AnimatePresence>
-                  {messages.map((message) => (
-                    <motion.div
-                      key={message.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className={`flex gap-3 ${message.type === 'user' ? 'flex-row-reverse' : ''}`}
-                    >
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        message.type === 'user' 
-                          ? 'bg-blue-500/20 text-blue-400' 
-                          : 'bg-purple-500/20 text-purple-400'
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${message.type === 'user' ? 'flex-row-reverse' : ''}`}
+                  >
+                    <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                      message.type === 'user' 
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg' 
+                        : 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-300'
+                    }`}>
+                      {message.type === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                    </div>
+                    
+                    <div className={`max-w-[75%] rounded-2xl p-4 ${
+                      message.type === 'user' 
+                        ? 'bg-gradient-to-r from-blue-600/90 to-blue-700/90 text-white rounded-tr-none shadow-lg' 
+                        : 'bg-slate-900/70 text-slate-100 rounded-tl-none border border-slate-700/50'
+                    }`}>
+                      <div className="whitespace-pre-wrap leading-relaxed">
+                        {message.content.split('**').map((part, i) => 
+                          i % 2 === 1 ? (
+                            <strong key={i} className="font-bold">{part}</strong>
+                          ) : (
+                            part
+                          )
+                        )}
+                      </div>
+                      <div className={`text-xs mt-3 ${
+                        message.type === 'user' ? 'text-blue-200/70' : 'text-slate-400'
                       }`}>
-                        {message.type === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      
-                      <div className={`max-w-[80%] ${
-                        message.type === 'user' 
-                          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white' 
-                          : 'bg-gray-800 text-gray-100'
-                      } rounded-2xl ${message.type === 'user' ? 'rounded-br-none' : 'rounded-bl-none'} p-4`}>
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                        <div className={`text-xs mt-2 ${
-                          message.type === 'user' ? 'text-blue-200' : 'text-gray-400'
-                        }`}>
-                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                    </div>
+                  </div>
+                ))}
                 <div ref={messagesEndRef} />
               </div>
 
               {/* Input Area */}
-              <div className="p-4 border-t border-gray-800">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder={videoData ? "Ask about the video..." : "Process a video first..."}
-                    className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:border-purple-500 focus:outline-none transition"
-                    disabled={!videoData}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!inputMessage.trim() || !videoData}
-                    className="px-5 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
-                
-                {!videoData && (
-                  <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="text-yellow-400 text-sm text-center">
-                      ⚡ Process a YouTube video to start chatting
-                    </p>
+              <div className="p-5 border-t border-slate-700/50">
+                {!isChatReady ? (
+                  <div className="text-center p-6 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                    <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full flex items-center justify-center">
+                      <Search className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <h3 className="font-bold text-white mb-2">Process a Video First</h3>
+                    <p className="text-slate-400 text-sm">Enter a YouTube URL above to start chatting about the video content</p>
                   </div>
+                ) : (
+                  <form onSubmit={handleSendMessage} className="flex gap-3">
+                    <div className="flex-1 relative">
+                      <MessageSquare className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500" />
+                      <input
+                        type="text"
+                        value={inputMessage}
+                        onChange={(e) => setInputMessage(e.target.value)}
+                        placeholder="Ask about the video..."
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/30 transition placeholder:text-slate-500 text-white"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!inputMessage.trim()}
+                      className="px-6 py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2.5 shadow-lg hover:shadow-purple-500/25"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
+                  </form>
                 )}
               </div>
             </div>
-          </motion.div>
+          </div>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-8 pt-6 border-t border-slate-800/50 text-center">
+          <p className="text-slate-500 text-sm">
+            TubeTalk • Built with Next.js, FastAPI, and AI • Backend running on localhost:8000
+          </p>
+        </footer>
       </div>
     </div>
   );
